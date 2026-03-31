@@ -46,6 +46,7 @@
       aspect-ratio: 1;
       display: grid;
       grid-template-columns: repeat(8, 1fr);
+      grid-template-rows: repeat(8, 1fr);
       border-radius: 10px;
       overflow: hidden;
       border: 2px solid #1f2937;
@@ -53,8 +54,33 @@
     .sq {
       display: grid;
       place-items: center;
-      font-size: 38px;
+      aspect-ratio: 1 / 1;
+      font-size: clamp(38px, 4.6vw, 50px);
+      line-height: 1;
       user-select: none;
+    }
+    .piece {
+      font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "Apple Symbols", sans-serif;
+      font-weight: 800;
+      filter: drop-shadow(0 2px 1px #00000090);
+    }
+    .piece.white {
+      color: #ffffff;
+      text-shadow:
+        -1px -1px 0 #0f172a,
+         1px -1px 0 #0f172a,
+        -1px  1px 0 #0f172a,
+         1px  1px 0 #0f172a,
+         0 0 8px #ffffff55;
+    }
+    .piece.black {
+      color: #0b1020;
+      text-shadow:
+        -1px -1px 0 #f8fafc,
+         1px -1px 0 #f8fafc,
+        -1px  1px 0 #f8fafc,
+         1px  1px 0 #f8fafc,
+         0 0 6px #00000055;
     }
     .light { background: var(--light); }
     .dark { background: var(--dark); }
@@ -235,7 +261,12 @@
         sq.className = `sq ${isLight ? 'light' : 'dark'}`;
         if (state.highlights.some(h => h[0] === r && h[1] === c)) sq.classList.add('hl');
         const p = state.board[r][c];
-        sq.textContent = p ? PIECE[p].u : '';
+        if (p) {
+          const pieceEl = document.createElement('span');
+          pieceEl.className = `piece ${isWhite(p) ? 'white' : 'black'}`;
+          pieceEl.textContent = PIECE[p].u;
+          sq.appendChild(pieceEl);
+        }
         sq.dataset.r = r;
         sq.dataset.c = c;
         sq.addEventListener('click', onSquareClick);
