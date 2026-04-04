@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lerende Schaak-AI (HTML)</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #22c55e;
+      --warning: #f59e0b;
+      --bad: #ef4444;
+      --light: #f0d9b5;
+      --dark: #b58863;
+      --highlight: #34d39966;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: linear-gradient(120deg, #0f172a, #111827);
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+    }
+    .layout {
+      width: min(1100px, 100%);
+      display: grid;
+      grid-template-columns: 520px 1fr;
+      gap: 16px;
+    }
+    .panel {
+      background: #0b1220;
+      border: 1px solid #1f2937;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px #00000044;
+      padding: 14px;
+    }
+    .board {
+      width: 100%;
+      aspect-ratio: 1;
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      grid-template-rows: repeat(8, 1fr);
+      border-radius: 10px;
+      overflow: hidden;
+      border: 2px solid #1f2937;
+    }
+    .sq {
+      display: grid;
+      place-items: center;
+      aspect-ratio: 1 / 1;
+      font-size: clamp(38px, 4.6vw, 50px);
+      line-height: 1;
+      user-select: none;
+    }
+    .piece {
+      font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "Apple Symbols", sans-serif;
+      font-weight: 800;
+      filter: drop-shadow(0 2px 1px #00000090);
+    }
+    .piece.white {
+      color: #ffffff;
+      text-shadow:
+        -1px -1px 0 #0f172a,
+         1px -1px 0 #0f172a,
+        -1px  1px 0 #0f172a,
+         1px  1px 0 #0f172a,
+         0 0 8px #ffffff55;
+    }
+    .piece.black {
+      color: #0b1020;
+      text-shadow:
+        -1px -1px 0 #f8fafc,
+         1px -1px 0 #f8fafc,
+        -1px  1px 0 #f8fafc,
+         1px  1px 0 #f8fafc,
+         0 0 6px #00000055;
+    }
+    .light { background: var(--light); }
+    .dark { background: var(--dark); }
+    .hl { outline: 3px solid var(--highlight); outline-offset: -3px; }
+    .meta { display: grid; gap: 10px; }
+    h1 { margin: 0 0 8px; font-size: 1.25rem; }
+    h2 { margin: 8px 0; font-size: 1rem; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .stat {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 10px;
+      padding: 8px 10px;
+      min-width: 140px;
+    }
+    .stat b { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 3px; }
+    .stat span { font-weight: 700; }
+    button, input[type="range"] {
+      accent-color: var(--accent);
+    }
+    button {
+      border: 1px solid #2d3748;
+      background: #1f2937;
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    button:hover { filter: brightness(1.1); }
+    .good { color: var(--accent); }
+    .bad { color: var(--bad); }
+    .warn { color: var(--warning); }
+    .log {
+      height: 250px;
+      overflow: auto;
+      background: #060b16;
+      border-radius: 10px;
+      border: 1px solid #1f2937;
+      padding: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+    .moves {
+      max-height: 200px;
+      overflow: auto;
+      border: 1px solid #1f2937;
+      border-radius: 10px;
+      padding: 8px;
+      background: #060b16;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.86rem;
+    }
+    .hint { color: var(--muted); font-size: 0.85rem; }
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <section class="panel">
+      <h1>Zelflerende Schaak-AI (zonder openingkennis)</h1>
+      <div id="board" class="board" aria-label="schaakbord"></div>
+      <p class="hint">Partijen lopen bewust traag zodat je kan volgen. Er is geen klok/tijdsdruk.</p>
+    </section>
+
+    <section class="panel meta">
+      <div class="row">
+        <div class="stat"><b>Geschatte ELO</b><span id="elo">500</span></div>
+        <div class="stat"><b>Partijen</b><span id="games">0</span></div>
+        <div class="stat"><b>Zetten</b><span id="plies">0</span></div>
+        <div class="stat"><b>Laatst</b><span id="lastResult">-</span></div>
+      </div>
+
+      <div class="row">
+        <button id="startBtn">Start leren</button>
+        <button id="pauseBtn">Pauze</button>
+        <button id="resetBtn">Reset model</button>
+        <button id="humanBtn">Speel tegen computer</button>
+        <label>Tempo per zet: <input id="speed" type="range" min="500" max="2500" step="100" value="1200" /></label>
+        <span id="speedLabel">1200 ms</span>
+      </div>
+      <div class="hint" id="modeLabel">Modus: Training (AI vs sparringpartner)</div>
+
+      <h2>Zetten in lopende partij</h2>
+      <div id="moves" class="moves"></div>
+
+      <h2>Beloning / Straf log</h2>
+      <div id="log" class="log"></div>
+    </section>
+  </div>
+
+<script>
+(() => {
+  const PIECE = {
+    p: {v:1, u:'♟'}, n: {v:3, u:'♞'}, b: {v:3, u:'♝'}, r: {v:5, u:'♜'}, q: {v:9, u:'♛'}, k: {v:100, u:'♚'},
+    P: {v:1, u:'♙'}, N: {v:3, u:'♘'}, B: {v:3, u:'♗'}, R: {v:5, u:'♖'}, Q: {v:9, u:'♕'}, K: {v:100, u:'♔'}
+  };
+
+  const boardEl = document.getElementById('board');
+  const eloEl = document.getElementById('elo');
+  const gamesEl = document.getElementById('games');
+  const pliesEl = document.getElementById('plies');
+  const lastResultEl = document.getElementById('lastResult');
+  const logEl = document.getElementById('log');
+  const movesEl = document.getElementById('moves');
+  const speedEl = document.getElementById('speed');
+  const speedLabelEl = document.getElementById('speedLabel');
+  const modeLabelEl = document.getElementById('modeLabel');
+
+  const model = {
+    q: new Map(),
+    alpha: 0.22,
+    gamma: 0.94,
+    epsilon: 0.22,
+    epsilonMin: 0.04,
+    epsilonDecay: 0.998,
+    elo: 500,
+    games: 0,
+    wins: 0,
+    draws: 0,
+    losses: 0,
+    plies: 0,
+    lastStateKey: null,
+    lastActionKey: null,
+  };
+
+  const state = {
+    board: null,
+    turn: 'w',
+    castling: { wK: true, wQ: true, bK: true, bQ: true },
+    epTarget: null,
+    halfmove: 0,
+    moveNum: 1,
+    running: false,
+    timer: null,
+    highlights: [],
+    selected: null,
+    mode: 'training', // training | human
+    humanColor: 'w'
+  };
+
+  function createInitialBoard() {
+    return [
+      ['r','n','b','q','k','b','n','r'],
+      ['p','p','p','p','p','p','p','p'],
+      [null,null,null,null,null,null,null,null],
+      [null,null,null,null,null,null,null,null],
+      [null,null,null,null,null,null,null,null],
+      [null,null,null,null,null,null,null,null],
+      ['P','P','P','P','P','P','P','P'],
+      ['R','N','B','Q','K','B','N','R'],
+    ];
+  }
+
+  function resetGame() {
+    state.board = createInitialBoard();
+    state.turn = 'w';
+    state.castling = { wK: true, wQ: true, bK: true, bQ: true };
+    state.epTarget = null;
+    state.halfmove = 0;
+    state.moveNum = 1;
+    state.highlights = [];
+    state.selected = null;
+    model.lastStateKey = null;
+    model.lastActionKey = null;
+    movesEl.textContent = '';
+    drawBoard();
+  }
+
+  function drawBoard() {
+    boardEl.innerHTML = '';
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const sq = document.createElement('div');
+        const isLight = (r + c) % 2 === 0;
+        sq.className = `sq ${isLight ? 'light' : 'dark'}`;
+        if (state.highlights.some(h => h[0] === r && h[1] === c)) sq.classList.add('hl');
+        const p = state.board[r][c];
+        if (p) {
+          const pieceEl = document.createElement('span');
+          pieceEl.className = `piece ${isWhite(p) ? 'white' : 'black'}`;
+          pieceEl.textContent = PIECE[p].u;
+          sq.appendChild(pieceEl);
+        }
+        sq.dataset.r = r;
+        sq.dataset.c = c;
+        sq.addEventListener('click', onSquareClick);
+        boardEl.appendChild(sq);
+      }
+    }
+  }
+
+  function onSquareClick(e) {
+    if (state.mode !== 'human' || state.running) return;
+    if (state.turn !== state.humanColor) return;
+    const r = Number(e.currentTarget.dataset.r);
+    const c = Number(e.currentTarget.dataset.c);
+    const piece = state.board[r][c];
+    const position = {
+      board: state.board,
+      turn: state.turn,
+      castling: state.castling,
+      epTarget: state.epTarget,
+    };
+    const moves = legalMoves(position, state.turn);
+
+    if (state.selected) {
+      const chosen = moves.find(m => m.from[0]===state.selected[0] && m.from[1]===state.selected[1] && m.to[0]===r && m.to[1]===c);
+      if (chosen) {
+        performMove(chosen, false);
+        state.selected = null;
+        return;
+      }
+    }
+
+    if (ownPiece(piece, state.humanColor)) {
+      state.selected = [r,c];
+      const targets = moves.filter(m => m.from[0]===r && m.from[1]===c).map(m => m.to);
+      state.highlights = [[r,c], ...targets];
+      drawBoard();
+    }
+  }
+
+  function inBounds(r,c){ return r>=0&&r<8&&c>=0&&c<8; }
+  function isWhite(p){ return p && p === p.toUpperCase(); }
+  function isBlack(p){ return p && p === p.toLowerCase(); }
+  function ownPiece(p, turn){ return p && ((turn==='w' && isWhite(p)) || (turn==='b' && isBlack(p))); }
+  function enemyPiece(p, turn){ return p && !ownPiece(p, turn); }
+  function cloneBoard(b){ return b.map(row => row.slice()); }
+  function sqName([r,c]){ return 'abcdefgh'[c] + (8-r); }
+
+  function boardKey(board, turn, castling, ep) {
+    const rows = board.map(row => row.map(p => p || '.').join('')).join('/');
+    const c = `${castling.wK?'K':''}${castling.wQ?'Q':''}${castling.bK?'k':''}${castling.bQ?'q':''}` || '-';
+    const e = ep ? sqName(ep) : '-';
+    return `${rows} ${turn} ${c} ${e}`;
+  }
+
+  function attackers(board, targetR, targetC, byTurn) {
+    const hits = [];
+    for (let r=0;r<8;r++) for (let c=0;c<8;c++) {
+      const p = board[r][c];
+      if (!ownPiece(p, byTurn)) continue;
+      const pseudo = pseudoMovesForPiece(board, r, c, byTurn, {ignoreCastle:true, onlyAttacks:true, epTarget: state.epTarget, castling: state.castling});
+      if (pseudo.some(m => m.to[0]===targetR && m.to[1]===targetC)) hits.push([r,c]);
+    }
+    return hits;
+  }
+
+  function kingPos(board, turn) {
+    const k = turn === 'w' ? 'K' : 'k';
+    for (let r=0;r<8;r++) for (let c=0;c<8;c++) if (board[r][c]===k) return [r,c];
+    return null;
+  }
+
+  function inCheck(board, turn) {
+    const kp = kingPos(board, turn);
+    if (!kp) return false;
+    return attackers(board, kp[0], kp[1], turn === 'w' ? 'b' : 'w').length > 0;
+  }
+
+  function pseudoMovesForPiece(board, r, c, turn, opts) {
+    const {ignoreCastle=false, onlyAttacks=false, epTarget=null, castling=state.castling} = opts || {};
+    const p = board[r][c];
+    if (!p) return [];
+    const out = [];
+    const add = (toR,toC,extra={}) => { if (inBounds(toR,toC)) out.push({from:[r,c], to:[toR,toC], ...extra}); };
+
+    const dir = turn==='w' ? -1 : 1;
+    const their = turn==='w' ? isBlack : isWhite;
+
+    switch (p.toLowerCase()) {
+      case 'p': {
+        if (!onlyAttacks) {
+          const oneR = r + dir;
+          if (inBounds(oneR,c) && !board[oneR][c]) {
+            add(oneR,c, {promotion: (oneR===0 || oneR===7) ? 'q' : null});
+            const startR = turn==='w' ? 6 : 1;
+            const twoR = r + dir*2;
+            if (r===startR && !board[twoR][c]) add(twoR,c, {doublePush:true});
+          }
+        }
+        for (const dc of [-1,1]) {
+          const tr = r + dir, tc = c + dc;
+          if (!inBounds(tr,tc)) continue;
+          if (their(board[tr][tc])) add(tr,tc, {capture:true, promotion: (tr===0 || tr===7) ? 'q' : null});
+          if (epTarget && epTarget[0]===tr && epTarget[1]===tc) add(tr,tc, {enPassant:true, capture:true});
+          if (onlyAttacks && !their(board[tr][tc])) add(tr,tc, {attackOnly:true});
+        }
+        break;
+      }
+      case 'n': {
+        [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]].forEach(([dr,dc]) => {
+          const tr=r+dr, tc=c+dc;
+          if (!inBounds(tr,tc)) return;
+          const t=board[tr][tc];
+          if (!t || enemyPiece(t,turn) || onlyAttacks) add(tr,tc, {capture: !!t});
+        });
+        break;
+      }
+      case 'b':
+      case 'r':
+      case 'q': {
+        const dirs = [];
+        if ('bq'.includes(p.toLowerCase())) dirs.push([-1,-1],[-1,1],[1,-1],[1,1]);
+        if ('rq'.includes(p.toLowerCase())) dirs.push([-1,0],[1,0],[0,-1],[0,1]);
+        for (const [dr,dc] of dirs) {
+          let tr=r+dr, tc=c+dc;
+          while (inBounds(tr,tc)) {
+            const t=board[tr][tc];
+            if (!t) add(tr,tc);
+            else {
+              if (enemyPiece(t,turn) || onlyAttacks) add(tr,tc, {capture: !!t});
+              break;
+            }
+            tr+=dr; tc+=dc;
+          }
+        }
+        break;
+      }
+      case 'k': {
+        for (let dr=-1;dr<=1;dr++) for (let dc=-1;dc<=1;dc++) {
+          if (!dr && !dc) continue;
+          const tr=r+dr, tc=c+dc;
+          if (!inBounds(tr,tc)) continue;
+          const t=board[tr][tc];
+          if (!t || enemyPiece(t,turn) || onlyAttacks) add(tr,tc, {capture: !!t});
+        }
+        if (!onlyAttacks && !ignoreCastle) {
+          if (turn==='w' && r===7 && c===4) {
+            if (castling.wK && !board[7][5] && !board[7][6]) add(7,6,{castle:'K'});
+            if (castling.wQ && !board[7][1] && !board[7][2] && !board[7][3]) add(7,2,{castle:'Q'});
+          }
+          if (turn==='b' && r===0 && c===4) {
+            if (castling.bK && !board[0][5] && !board[0][6]) add(0,6,{castle:'K'});
+            if (castling.bQ && !board[0][1] && !board[0][2] && !board[0][3]) add(0,2,{castle:'Q'});
+          }
+        }
+        break;
+      }
+    }
+    return out;
+  }
+
+  function applyMovePosition(position, mv) {
+    const board = cloneBoard(position.board);
+    const castling = {...position.castling};
+    let epTarget = null;
+    const piece = board[mv.from[0]][mv.from[1]];
+    let captured = board[mv.to[0]][mv.to[1]];
+
+    board[mv.from[0]][mv.from[1]] = null;
+
+    if (mv.enPassant) {
+      const capR = position.turn === 'w' ? mv.to[0] + 1 : mv.to[0] - 1;
+      captured = board[capR][mv.to[1]];
+      board[capR][mv.to[1]] = null;
+    }
+
+    if (mv.castle) {
+      if (position.turn==='w') {
+        if (mv.castle==='K') { board[7][5] = board[7][7]; board[7][7] = null; }
+        else { board[7][3] = board[7][0]; board[7][0] = null; }
+      } else {
+        if (mv.castle==='K') { board[0][5] = board[0][7]; board[0][7] = null; }
+        else { board[0][3] = board[0][0]; board[0][0] = null; }
+      }
+    }
+
+    let placed = piece;
+    if (mv.promotion) placed = position.turn === 'w' ? mv.promotion.toUpperCase() : mv.promotion.toLowerCase();
+    board[mv.to[0]][mv.to[1]] = placed;
+
+    if (piece==='K') { castling.wK=false; castling.wQ=false; }
+    if (piece==='k') { castling.bK=false; castling.bQ=false; }
+    if (mv.from[0]===7 && mv.from[1]===0) castling.wQ=false;
+    if (mv.from[0]===7 && mv.from[1]===7) castling.wK=false;
+    if (mv.from[0]===0 && mv.from[1]===0) castling.bQ=false;
+    if (mv.from[0]===0 && mv.from[1]===7) castling.bK=false;
+    if (mv.to[0]===7 && mv.to[1]===0) castling.wQ=false;
+    if (mv.to[0]===7 && mv.to[1]===7) castling.wK=false;
+    if (mv.to[0]===0 && mv.to[1]===0) castling.bQ=false;
+    if (mv.to[0]===0 && mv.to[1]===7) castling.bK=false;
+
+    if (mv.doublePush) {
+      epTarget = [ (mv.from[0] + mv.to[0]) / 2, mv.to[1] ];
+    }
+
+    return {
+      board,
+      castling,
+      epTarget,
+      turn: position.turn === 'w' ? 'b' : 'w',
+      captured,
+      moved: piece
+    };
+  }
+
+  function legalMoves(position, turn) {
+    const moves = [];
+    for (let r=0;r<8;r++) for (let c=0;c<8;c++) {
+      if (!ownPiece(position.board[r][c], turn)) continue;
+      const pseudo = pseudoMovesForPiece(position.board, r, c, turn, {epTarget: position.epTarget, castling: position.castling});
+      for (const mv of pseudo) {
+        const np = applyMovePosition({...position, turn}, mv);
+        if (mv.castle) {
+          // Castling squares may not be attacked.
+          const through = mv.castle === 'K' ? [[r,c],[r,c+1],[r,c+2]] : [[r,c],[r,c-1],[r,c-2]];
+          if (through.some(([tr,tc]) => attackers(position.board, tr, tc, turn==='w'?'b':'w').length)) continue;
+        }
+        if (!inCheck(np.board, turn)) moves.push(mv);
+      }
+    }
+    return moves;
+  }
+
+  function actionKey(mv) {
+    return `${sqName(mv.from)}-${sqName(mv.to)}${mv.promotion ? '=' + mv.promotion : ''}${mv.castle ? 'O'+mv.castle : ''}${mv.enPassant ? 'ep' : ''}`;
+  }
+
+  function qGet(s,a){ return model.q.get(`${s}|${a}`) ?? 0; }
+  function qSet(s,a,v){ model.q.set(`${s}|${a}`, v); }
+
+  function chooseMove(position, moves, learn=true) {
+    const s = boardKey(position.board, position.turn, position.castling, position.epTarget);
+    if (learn && Math.random() < model.epsilon) {
+      const mv = moves[Math.floor(Math.random()*moves.length)];
+      return {mv, s, exploratory: true};
+    }
+    let best = -Infinity;
+    let bestMoves = [];
+    for (const mv of moves) {
+      const a = actionKey(mv);
+      const q = qGet(s,a);
+      if (q > best) { best = q; bestMoves = [mv]; }
+      else if (q === best) bestMoves.push(mv);
+    }
+    const mv = bestMoves[Math.floor(Math.random()*bestMoves.length)] || moves[Math.floor(Math.random()*moves.length)];
+    return {mv, s, exploratory: false};
+  }
+
+  function randomWeightedMove(position, moves) {
+    const scored = moves.map(mv => {
+      let w = 1;
+      const tgt = position.board[mv.to[0]][mv.to[1]];
+      if (tgt) w += PIECE[tgt].v * 0.8;
+      if (mv.promotion) w += 2;
+      const next = applyMovePosition(position, mv);
+      if (inCheck(next.board, next.turn)) w += 0.3;
+      return {mv,w};
+    });
+    const total = scored.reduce((a,b)=>a+b.w,0);
+    let x = Math.random()*total;
+    for (const s of scored) {
+      x -= s.w;
+      if (x<=0) return s.mv;
+    }
+    return scored[0].mv;
+  }
+
+  function rewardForMove(position, mv, nextPos) {
+    let r = 0.05; // geldige zet
+    const target = position.board[mv.to[0]][mv.to[1]];
+    if (target) r += PIECE[target].v * 0.12;
+    if (mv.enPassant) r += 0.12;
+    if (mv.promotion) r += 0.5;
+
+    // Straf wanneer stuk direct aangevallen staat na de zet.
+    const atk = attackers(nextPos.board, mv.to[0], mv.to[1], nextPos.turn);
+    if (atk.length) {
+      const movedPiece = nextPos.board[mv.to[0]][mv.to[1]];
+      r -= PIECE[movedPiece].v * 0.04;
+    }
+
+    if (inCheck(nextPos.board, nextPos.turn)) r += 0.25;
+    return r;
+  }
+
+  function log(msg, cls='') {
+    const line = document.createElement('div');
+    if (cls) line.className = cls;
+    line.textContent = msg;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function updateElo(score, oppElo=700) {
+    const K = 20;
+    const expected = 1 / (1 + 10 ** ((oppElo - model.elo) / 400));
+    model.elo = Math.max(100, Math.round(model.elo + K * (score - expected)));
+  }
+
+  function tdUpdate(prevS, prevA, reward, nextS, nextMoves) {
+    const old = qGet(prevS, prevA);
+    let nextBest = 0;
+    if (nextMoves && nextMoves.length) {
+      nextBest = Math.max(...nextMoves.map(m => qGet(nextS, actionKey(m))), 0);
+    }
+    const updated = old + model.alpha * (reward + model.gamma * nextBest - old);
+    qSet(prevS, prevA, updated);
+  }
+
+  function addMoveNotation(mv, piece, capture) {
+    const p = piece.toLowerCase() === 'p' ? '' : piece.toUpperCase();
+    const txt = `${state.moveNum}${state.turn==='w'?'.':'...'} ${p}${sqName(mv.from)}${capture?'x':'-'}${sqName(mv.to)}${mv.promotion?'='+mv.promotion.toUpperCase():''}${mv.castle ? ' (rokade)' : ''}${mv.enPassant ? ' e.p.' : ''}`;
+    const div = document.createElement('div');
+    div.textContent = txt;
+    movesEl.appendChild(div);
+    movesEl.scrollTop = movesEl.scrollHeight;
+  }
+
+  function resolveNoMoves(position) {
+    const sideInCheck = inCheck(position.board, state.turn);
+    if (sideInCheck) {
+      if (state.mode === 'human') {
+        if (state.turn === state.humanColor) {
+          endGame('Computer wint (mat)', 0, -2.2, false);
+        } else {
+          endGame('Jij wint (mat)', 1, 2.2, false);
+        }
+      } else {
+        if (state.turn === 'w') endGame('Zwart wint (mat)', 0, -2.2, true);
+        else endGame('Wit wint (mat)', 1, 2.2, true);
+      }
+    } else {
+      endGame('Remise (pat)', 0.5, 0.2, state.mode === 'training');
+    }
+    drawBoard();
+  }
+
+  function endGame(resultText, learnerScore, terminalReward, rateForTraining) {
+    model.games += 1;
+    if (rateForTraining) {
+      if (learnerScore === 1) model.wins += 1;
+      else if (learnerScore === 0.5) model.draws += 1;
+      else model.losses += 1;
+    }
+
+    if (rateForTraining) {
+      updateElo(learnerScore);
+      model.epsilon = Math.max(model.epsilonMin, model.epsilon * model.epsilonDecay);
+    }
+
+    if (model.lastStateKey && model.lastActionKey) {
+      tdUpdate(model.lastStateKey, model.lastActionKey, terminalReward, '', []);
+      model.lastStateKey = null;
+      model.lastActionKey = null;
+    }
+
+    lastResultEl.textContent = resultText;
+    log(`Einde partij ${model.games}: ${resultText} | ELO => ${model.elo}`, learnerScore===1 ? 'good' : learnerScore===0 ? 'bad' : 'warn');
+
+    gamesEl.textContent = model.games;
+    eloEl.textContent = model.elo;
+
+    setTimeout(() => {
+      resetGame();
+    }, 900);
+  }
+
+  function tick() {
+    const position = {
+      board: state.board,
+      turn: state.turn,
+      castling: state.castling,
+      epTarget: state.epTarget,
+    };
+
+    const moves = legalMoves(position, state.turn);
+    if (!moves.length) {
+      resolveNoMoves(position);
+      return;
+    }
+
+    let mv, s;
+    const learnerTurn = state.turn === 'w';
+    if (learnerTurn) {
+      const choice = chooseMove(position, moves, true);
+      mv = choice.mv; s = choice.s;
+    } else {
+      mv = randomWeightedMove(position, moves);
+    }
+    performMove(mv, true, s);
+  }
+
+  function performMove(mv, trainingMove, cachedStateKey = null) {
+    const position = {
+      board: state.board,
+      turn: state.turn,
+      castling: state.castling,
+      epTarget: state.epTarget,
+    };
+    const piece = position.board[mv.from[0]][mv.from[1]];
+    const capture = !!position.board[mv.to[0]][mv.to[1]] || mv.enPassant;
+    const nextPos = applyMovePosition(position, mv);
+
+    if (trainingMove && state.turn === 'w') {
+      const s = cachedStateKey || boardKey(position.board, position.turn, position.castling, position.epTarget);
+      const reward = rewardForMove(position, mv, nextPos);
+      const nextLegal = legalMoves(nextPos, nextPos.turn);
+      const nextS = boardKey(nextPos.board, nextPos.turn, nextPos.castling, nextPos.epTarget);
+      tdUpdate(s, actionKey(mv), reward, nextS, nextLegal);
+      model.lastStateKey = s;
+      model.lastActionKey = actionKey(mv);
+      log(`Beloning ${reward>=0?'+':''}${reward.toFixed(2)} voor ${actionKey(mv)}`, reward>=0 ? 'good' : 'bad');
+    }
+
+    state.board = nextPos.board;
+    state.turn = nextPos.turn;
+    state.castling = nextPos.castling;
+    state.epTarget = nextPos.epTarget;
+    state.highlights = [mv.from, mv.to];
+    state.selected = null;
+
+    if (state.turn === 'w') state.moveNum += 1;
+    model.plies += 1;
+
+    addMoveNotation(mv, piece, capture);
+    drawBoard();
+
+    pliesEl.textContent = model.plies;
+    gamesEl.textContent = model.games;
+    eloEl.textContent = model.elo;
+
+    if (state.mode === 'human' && !state.running && state.turn !== state.humanColor) {
+      setTimeout(() => {
+        if (state.mode !== 'human' || state.running || state.turn === state.humanColor) return;
+        const pos = { board: state.board, turn: state.turn, castling: state.castling, epTarget: state.epTarget };
+        const legal = legalMoves(pos, state.turn);
+        if (!legal.length) return resolveNoMoves(pos);
+        const compMove = randomWeightedMove(pos, legal);
+        performMove(compMove, false);
+      }, Number(speedEl.value));
+    } else if (state.mode === 'human' && !state.running && state.turn === state.humanColor) {
+      const pos = { board: state.board, turn: state.turn, castling: state.castling, epTarget: state.epTarget };
+      const legal = legalMoves(pos, state.turn);
+      if (!legal.length) resolveNoMoves(pos);
+    }
+  }
+
+  function start() {
+    if (state.running) return;
+    if (state.mode !== 'training') {
+      log('Start leren werkt alleen in trainingsmodus. Schakel eerst mens-modus uit.', 'warn');
+      return;
+    }
+    state.running = true;
+    const loop = () => {
+      if (!state.running) return;
+      tick();
+      state.timer = setTimeout(loop, Number(speedEl.value));
+    };
+    loop();
+  }
+
+  function pause() {
+    state.running = false;
+    if (state.timer) clearTimeout(state.timer);
+  }
+
+  function toggleHumanMode() {
+    pause();
+    state.mode = state.mode === 'human' ? 'training' : 'human';
+    modeLabelEl.textContent = state.mode === 'human'
+      ? 'Modus: Jij (wit) vs computer (zwart). Training staat stil.'
+      : 'Modus: Training (AI vs sparringpartner)';
+    document.getElementById('humanBtn').textContent = state.mode === 'human' ? 'Stop mens vs computer' : 'Speel tegen computer';
+    resetGame();
+    if (state.mode === 'human') {
+      log('Mens vs computer gestart. Klik op een stuk en daarna op een doelveld.');
+    } else {
+      log('Terug naar trainingsmodus.');
+    }
+  }
+
+  function resetModel() {
+    pause();
+    model.q.clear();
+    model.elo = 500;
+    model.games = 0;
+    model.plies = 0;
+    model.wins = model.draws = model.losses = 0;
+    model.epsilon = 0.22;
+    logEl.innerHTML = '';
+    lastResultEl.textContent = '-';
+    gamesEl.textContent = '0';
+    pliesEl.textContent = '0';
+    eloEl.textContent = '500';
+    resetGame();
+    log('Model gereset. AI start zonder schaakkennis, enkel met regels.');
+  }
+
+  speedEl.addEventListener('input', () => {
+    speedLabelEl.textContent = `${speedEl.value} ms`;
+  });
+  document.getElementById('startBtn').addEventListener('click', start);
+  document.getElementById('pauseBtn').addEventListener('click', pause);
+  document.getElementById('resetBtn').addEventListener('click', resetModel);
+  document.getElementById('humanBtn').addEventListener('click', toggleHumanMode);
+
+  resetGame();
+  log('Klaar. Klik op "Start leren" om de AI partijen te laten spelen.');
+})();
+</script>
+</body>
+</html>
